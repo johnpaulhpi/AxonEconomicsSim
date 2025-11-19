@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Axon vs New Fiber – Economics Simulator</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 20px;
+      background: #f5f5f7;
+      color: #222;
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      color: #555;
+      margin-bottom: 0.5rem;
+    }
+    .explanation {
+      color: #666;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .panel {
+      background: #fff;
+      border-radius: 8px;
+      padding: 16px 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      box-sizing: border-box;
+    }
+    .controls {
+      flex: 1 1 280px;
+      max-width: 380px;
+    }
+    .results {
+      flex: 1 1 320px;
+    }
+    .control-group {
+      margin-bottom: 14px;
+    }
+    label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      margin-bottom: 4px;
+    }
+    input[type="range"], select {
+      width: 100%;
+    }
+    .value {
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .section-title {
+      font-weight: 600;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+    .results-table {
+      font-size: 0.9rem;
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .results-table td {
+      padding: 3px 0;
+    }
+    .results-table td.label {
+      color: #555;
+    }
+    .results-table td.value {
+      text-align: right;
+      font-weight: 600;
+    }
+    .bar-chart {
+      margin-top: 16px;
+    }
+    .bar-row {
+      display: flex;
+      align-items: center;
+      margin: 6px 0;
+      font-size: 0.85rem;
+    }
+    .bar-label {
+      width: 95px;
+    }
+    .bar-track {
+      flex: 1;
+      height: 18px;
+      background: #e1e4ea;
+      border-radius: 9px;
+      overflow: hidden;
+      margin-left: 8px;
+      position: relative;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 9px;
+    }
+    .bar-fill.axon {
+      background: #1fbf75;
+    }
+    .bar-fill.no-axon {
+      background: #888ea5;
+    }
+    .bar-value {
+      margin-left: 8px;
+      min-width: 80px;
+      text-align: right;
+    }
+    .footer-note {
+      margin-top: 12px;
+      font-size: 0.8rem;
+      color: #777;
+    }
+    .math-section {
+      margin-top: 18px;
+      font-size: 0.85rem;
+      color: #444;
+      line-height: 1.4;
+    }
+    .math-section ul {
+      padding-left: 20px;
+      margin: 4px 0 0 0;
+    }
+    .help-text {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Axon vs New Fiber – Economics Simulator</h1>
+  <div class="subtitle">
+    Compare 10-year NPV of adding channels on <strong>one existing leased fiber</strong> (Axon)
+    vs. building extra fibers to lease out the same total capacity.
+  </div>
+  <div class="explanation">
+    With <strong>Axon</strong>, you unlock more leasable channels on a single existing fiber.
+    Without Axon, you must construct additional fibers so you can lease out the
+    same total number of channels.<br><br>
+    The <strong>“extra demanded channels”</strong> slider sets the total capacity you want on this route
+    (beyond the base 16 channels). <em>Both</em> scenarios must meet that demand, so changing it
+    affects the economics of <em>both</em> bars.
+    <br><br>
+    <strong>Channel lease price</strong> is what <em>you charge</em> your customers per channel·km·year.  
+    <strong>Upstream fiber lease cost</strong> is what <em>you pay</em> to lease the underlying fiber per fiber·km·year.
+  </div>
+
+  <div class="container">
+    <!-- Controls -->
+    <div class="panel controls">
+      <div class="section-title">Scenario</div>
+      <div class="control-group">
+        <label>
+          Scenario preset
+        </label>
+        <select id="preset">
+          <option value="custom">Custom (manual)</option>
+          <option value="urban">Urban metro</option>
+          <option value="suburban">Suburban</option>
+          <option value="rural">Rural long-haul</option>
+        </select>
+      </div>
+
+      <div class="section-title">Inputs</div>
+
+      <div class="control-group">
+        <label>
+          Extra demanded channels on this route (beyond base 16)
+          <span class="value" id="extraChannelsVal"></span>
+        </label>
+        <input type="range" id="extraChannels" min="1" max="50" step="1" value="10">
+        <div class="help-text">
+          This is extra demand. Both Axon and no-Axon must carry these channels, so both NPVs change when you move this.
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>
+          Fiber length (km)
+          <span class="value" id="fiberLengthVal"></span>
+        </label>
+        <input type="range" id="fiberLength" min="1" max="200" step="1" value="10">
+      </div>
+
+      <div class="control-group">
+        <label>
+          Channel lease price – what you charge ($ per channel·km·year)
+          <span class="value" id="priceVal"></span>
+        </label>
+        <input type="range" id="price" min="10" max="1000" step="10" value="200">
+      </div>
+
+      <div class="control-group">
+        <label>
+          Cost to lay new fiber ($/km)
+          <span class="value" id="fiberCostVal"></span>
+        </label>
+        <input type="range" id="fiberCost" min="1000" max="50000" step="1000" value="15000">
+      </div>
+
+      <div class="control-group">
+        <label>
+          Axon hardware cost ($ per fiber)
+          <span class="value" id="axonCostVal"></span>
+        </label>
+        <input type="range" id="axonCost" min="10000" max="200000" step="5000" value="50000">
+      </div>
+
+      <div class="control-group">
+        <label>
+          Upstream fiber lease cost – what you pay ($ per fiber·km·year)
+          <span class="value" id="fiberLeaseVal"></span>
+        </label>
+        <input type="range" id="fiberLease" min="0" max="5000" step="50" value="500">
+        <div class="help-text">
+          Set this to 0 if you own the fiber instead of leasing it.
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>
+          Base channels per fiber (no Axon)
+          <span class="value" id="baseChannelsVal">16</span>
+        </label>
+      </div>
+
+      <div class="control-group">
+        <label>
+          Horizon / Discount rate
+          <span class="value">10 years @ 8%</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="panel results">
+      <div class="section-title">Capacity & Fiber Usage</div>
+      <table class="results-table">
+        <tr>
+          <td class="label">Total capacity leased (channels)</td>
+          <td class="value" id="targetCapacity"></td>
+        </tr>
+        <tr>
+          <td class="label">Existing leased fibers (both scenarios)</td>
+          <td class="value" id="existingFibers"></td>
+        </tr>
+        <tr>
+          <td class="label">Total fibers with Axon</td>
+          <td class="value" id="fibersWithAxon"></td>
+        </tr>
+        <tr>
+          <td class="label">Total fibers without Axon</td>
+          <td class="value" id="fibersNeeded"></td>
+        </tr>
+        <tr>
+          <td class="label">Extra new fibers required (no Axon)</td>
+          <td class="value" id="extraFibers"></td>
+        </tr>
+      </table>
+
+      <div class="section-title" style="margin-top:10px;">Economics (10-year NPV)</div>
+      <table class="results-table">
+        <tr>
+          <td class="label">Annual revenue from leased channels (both)</td>
+          <td class="value" id="annualRevenue"></td>
+        </tr>
+        <tr>
+          <td class="label">NPV of revenue stream (both)</td>
+          <td class="value" id="npvRevenue"></td>
+        </tr>
+        <tr>
+          <td class="label">PV of existing fiber lease (both)</td>
+          <td class="value" id="npvLease"></td>
+        </tr>
+        <tr>
+          <td class="label">Capex with Axon (hardware only)</td>
+          <td class="value" id="capexAxon"></td>
+        </tr>
+        <tr>
+          <td class="label">Capex without Axon (new fibers)</td>
+          <td class="value" id="capexNoAxon"></td>
+        </tr>
+        <tr>
+          <td class="label">NPV with Axon</td>
+          <td class="value" id="npvAxon"></td>
+        </tr>
+        <tr>
+          <td class="label">NPV without Axon</td>
+          <td class="value" id="npvNoAxon"></td>
+        </tr>
+        <tr>
+          <td class="label">Axon NPV advantage</td>
+          <td class="value" id="npvAdvantage"></td>
+        </tr>
+      </table>
+
+      <div class="bar-chart">
+        <div class="section-title">NPV comparison</div>
+        <div class="bar-row">
+          <div class="bar-label">With Axon</div>
+          <div class="bar-track">
+            <div class="bar-fill axon" id="barAxon"></div>
+          </div>
+          <div class="bar-value" id="barAxonVal"></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">No Axon</div>
+          <div class="bar-track">
+            <div class="bar-fill no-axon" id="barNoAxon"></div>
+          </div>
+          <div class="bar-value" id="barNoAxonVal"></div>
+        </div>
+      </div>
+
+      <div class="math-section">
+        <div class="section-title">How the model works</div>
+        <ul>
+          <li><strong>Capacity target:</strong> we want to lease out
+            <em>C = base_channels + extra_channels</em> total channels over this route.</li>
+          <li><strong>Without Axon:</strong> each fiber carries only
+            <em>base_channels</em>, so we need
+            <em>F<sub>noAxon</sub> = ceil(C / base_channels)</em> fibers.
+            One is the existing leased fiber; the rest must be built.</li>
+          <li><strong>With Axon:</strong> we still lease one existing fiber, but Axon
+            upgrades it so that single fiber carries <em>C</em> channels.</li>
+          <li><strong>Annual revenue:</strong>
+            <em>R = C × price_per_channel·km·year × fiber_length_km</em>
+            (same in both scenarios).</li>
+          <li><strong>Annual lease cost (existing fiber):</strong>
+            <em>L = lease_cost_per_fiber·km·year × fiber_length_km</em>.
+            This cost applies in both scenarios for the one leased fiber.</li>
+          <li><strong>Capex:</strong>
+            Axon: <em>Capex<sub>Axon</sub> = Axon_cost</em>.
+            No Axon: <em>Capex<sub>noAxon</sub> = extra_fibers × cost_new_fiber_per_km × fiber_length_km</em>.</li>
+          <li><strong>Present value factor:</strong> for 10 years at 8%,
+            <em>PV = (1 − (1 + r)<sup>−T</sup>) / r</em>.</li>
+          <li><strong>NPVs:</strong>
+            <ul>
+              <li><em>NPV<sub>Axon</sub> = R·PV − Capex<sub>Axon</sub> − L·PV</em></li>
+              <li><em>NPV<sub>noAxon</sub> = R·PV − Capex<sub>noAxon</sub> − L·PV</em></li>
+            </ul>
+            The lease term <em>L·PV</em> cancels out in the difference, so
+            Axon’s advantage is mainly about avoiding the capex of building
+            those extra fibers for the same capacity.</li>
+        </ul>
+      </div>
+
+      <div class="footer-note">
+        Model: simple annuity NPV, assumes one existing leased fiber.
+        Axon adds channels on that fiber; the no-Axon case builds extra fibers
+        to lease out the same number of channels. OPEX beyond lease cost is
+        ignored or assumed similar in both scenarios.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Core economic model ---
+    function computeResults(params) {
+      const baseChannels = 16;
+      const years = 10;
+      const discountRate = 0.08;
+
+      const extraChannels = params.extraChannels;
+      const fiberLen = params.fiberLengthKm;
+      const price = params.pricePerChannelKmYr;
+      const fiberCost = params.costNewFiberPerKm;
+      const axonCost = params.axonCostPerFiber;
+      const leaseCost = params.leaseCostPerFiberKmYr;
+
+      const targetCapacity = baseChannels + extraChannels;
+      const fibersNeededNoAxon = Math.ceil(targetCapacity / baseChannels);
+      const extraFibersNeeded = Math.max(0, fibersNeededNoAxon - 1);
+
+      const annualRevenue = targetCapacity * price * fiberLen;
+      const annualLeaseExisting = leaseCost * fiberLen;
+
+      const capexAxon = axonCost;
+      const capexNewFiber = extraFibersNeeded * fiberCost * fiberLen;
+
+      let pvFactor;
+      if (discountRate === 0) {
+        pvFactor = years;
+      } else {
+        pvFactor = (1 - Math.pow(1 + discountRate, -years)) / discountRate;
+      }
+
+      const npvRevenue = annualRevenue * pvFactor;
+      const npvLeaseExisting = annualLeaseExisting * pvFactor;
+
+      const npvAxon = npvRevenue - capexAxon - npvLeaseExisting;
+      const npvNoAxon = npvRevenue - capexNewFiber - npvLeaseExisting;
+      const npvAdvantage = npvAxon - npvNoAxon;
+
+      return {
+        baseChannels,
+        targetCapacity,
+        fibersNeededNoAxon,
+        extraFibersNeeded,
+        annualRevenue,
+        capexAxon,
+        capexNewFiber,
+        npvRevenue,
+        npvLeaseExisting,
+        npvAxon,
+        npvNoAxon,
+        npvAdvantage
+      };
+    }
+
+    function fmtMoney(x) {
+      return "$" + x.toLocaleString("en-US", { maximumFractionDigits: 0 });
+    }
+
+    function update() {
+      const extraChannels = parseInt(document.getElementById("extraChannels").value, 10);
+      const fiberLength = parseFloat(document.getElementById("fiberLength").value);
+      const fiberCost = parseFloat(document.getElementById("fiberCost").value);
+      const price = parseFloat(document.getElementById("price").value);
+      const axonCost = parseFloat(document.getElementById("axonCost").value);
+      const fiberLease = parseFloat(document.getElementById("fiberLease").value);
+
+      // If sliders move, mark scenario as custom
+      const presetSelect = document.getElementById("preset");
+      if (presetSelect.value !== "custom" && update.fromPreset !== true) {
+        presetSelect.value = "custom";
+      }
+
+      // Reset flag
+      update.fromPreset = false;
+
+      // Update labels next to sliders
+      document.getElementById("extraChannelsVal").textContent = extraChannels;
+      document.getElementById("fiberLengthVal").textContent = fiberLength + " km";
+      document.getElementById("fiberCostVal").textContent = fmtMoney(fiberCost) + " /km";
+      document.getElementById("priceVal").textContent = fmtMoney(price);
+      document.getElementById("axonCostVal").textContent = fmtMoney(axonCost);
+      document.getElementById("fiberLeaseVal").textContent = fmtMoney(fiberLease);
+
+      const res = computeResults({
+        extraChannels: extraChannels,
+        fiberLengthKm: fiberLength,
+        pricePerChannelKmYr: price,
+        costNewFiberPerKm: fiberCost,
+        axonCostPerFiber: axonCost,
+        leaseCostPerFiberKmYr: fiberLease
+      });
+
+      // Fiber usage & capacity
+      const existingFibers = 1;
+      const fibersWithAxon = 1;
+
+      document.getElementById("targetCapacity").textContent =
+        res.targetCapacity + " channels";
+      document.getElementById("existingFibers").textContent =
+        existingFibers;
+      document.getElementById("fibersWithAxon").textContent =
+        fibersWithAxon;
+      document.getElementById("fibersNeeded").textContent =
+        res.fibersNeededNoAxon;
+      document.getElementById("extraFibers").textContent =
+        res.extraFibersNeeded;
+
+      // Economics
+      document.getElementById("annualRevenue").textContent =
+        fmtMoney(res.annualRevenue);
+      document.getElementById("npvRevenue").textContent =
+        fmtMoney(res.npvRevenue);
+      document.getElementById("npvLease").textContent =
+        fmtMoney(res.npvLeaseExisting);
+      document.getElementById("capexAxon").textContent =
+        fmtMoney(res.capexAxon);
+      document.getElementById("capexNoAxon").textContent =
+        fmtMoney(res.capexNewFiber);
+      document.getElementById("npvAxon").textContent =
+        fmtMoney(res.npvAxon);
+      document.getElementById("npvNoAxon").textContent =
+        fmtMoney(res.npvNoAxon);
+      document.getElementById("npvAdvantage").textContent =
+        fmtMoney(res.npvAdvantage);
+
+      // Update bar chart – only show positive NPV as bar length
+      const maxPositive = Math.max(res.npvAxon, res.npvNoAxon, 0);
+      let axonWidth = 0;
+      let noAxonWidth = 0;
+      if (maxPositive > 0) {
+        axonWidth = Math.max(0, res.npvAxon) / maxPositive * 100;
+        noAxonWidth = Math.max(0, res.npvNoAxon) / maxPositive * 100;
+      }
+
+      document.getElementById("barAxon").style.width = axonWidth + "%";
+      document.getElementById("barNoAxon").style.width = noAxonWidth + "%";
+
+      document.getElementById("barAxonVal").textContent = fmtMoney(res.npvAxon);
+      document.getElementById("barNoAxonVal").textContent = fmtMoney(res.npvNoAxon);
+    }
+
+    // Flag used to distinguish preset-driven updates from manual slider moves
+    update.fromPreset = false;
+
+    function attachSlider(id) {
+      document.getElementById(id).addEventListener("input", function () {
+        update();
+      });
+    }
+
+    // Attach slider listeners
+    attachSlider("extraChannels");
+    attachSlider("fiberLength");
+    attachSlider("fiberCost");
+    attachSlider("price");
+    attachSlider("axonCost");
+    attachSlider("fiberLease");
+
+    // Preset scenarios
+    const presets = {
+      urban: {
+        extraChannels: 24,
+        fiberLength: 10,
+        fiberCost: 30000,
+        price: 400,
+        axonCost: 80000,
+        fiberLease: 1200
+      },
+      suburban: {
+        extraChannels: 16,
+        fiberLength: 50,
+        fiberCost: 20000,
+        price: 200,
+        axonCost: 60000,
+        fiberLease: 800
+      },
+      rural: {
+        extraChannels: 32,
+        fiberLength: 120,
+        fiberCost: 12000,
+        price: 80,
+        axonCost: 100000,
+        fiberLease: 300
+      }
+    };
+
+    document.getElementById("preset").addEventListener("change", function () {
+      const v = this.value;
+      const p = presets[v];
+      if (!p) {
+        update();
+        return;
+      }
+      // Set from preset without flipping back to "custom"
+      update.fromPreset = true;
+      document.getElementById("extraChannels").value = p.extraChannels;
+      document.getElementById("fiberLength").value = p.fiberLength;
+      document.getElementById("fiberCost").value = p.fiberCost;
+      document.getElementById("price").value = p.price;
+      document.getElementById("axonCost").value = p.axonCost;
+      document.getElementById("fiberLease").value = p.fiberLease;
+      update();
+    });
+
+    // Initial render
+    update();
+  </script>
+</body>
+</html>
